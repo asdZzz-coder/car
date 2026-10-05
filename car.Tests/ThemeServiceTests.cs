@@ -80,7 +80,7 @@ namespace car.Tests
                 .ToDictionary(e => e.Attribute(x + "Key")!.Value, e => e.Attribute("Color")!.Value.ToUpperInvariant());
 
             var palette = ThemeService.Palette.ToDictionary(p => p.Key, p => p.Light.ToUpperInvariant());
-            Assert.Equal(xamlBrushes.Keys.Order(), palette.Keys.Order());
+            Assert.Equal(xamlBrushes.Keys.Order(StringComparer.Ordinal), palette.Keys.Order(StringComparer.Ordinal));
             foreach (var (key, color) in xamlBrushes)
                 Assert.True(palette[key] == color, $"{key}: App.xaml 是 {color}，Palette 是 {palette[key]}");
         }

@@ -96,7 +96,7 @@ namespace car.Tests
 
             DesktopShortcutService.Create(true, Desktop, Programs, "");
 
-            Assert.Equal(new[] { "其他程式.appref-ms", AppRefName }.Order(), DesktopFiles().Order());
+            Assert.Equal(new[] { "其他程式.appref-ms", AppRefName }.Order(StringComparer.Ordinal), DesktopFiles().Order(StringComparer.Ordinal));
             Assert.Contains("OtherApp.application", File.ReadAllText(other));
         }
 
@@ -201,7 +201,7 @@ namespace car.Tests
 
             DesktopShortcutService.TidyUp(Desktop, Programs, Taskbar, FakeInstalledExe("v12"));
 
-            Assert.Equal(["車輛紀錄.appref-ms", "簡易記帳.appref-ms"], DesktopFiles().Order().ToArray());
+            Assert.Equal(new[] { "車輛紀錄.appref-ms", "簡易記帳.appref-ms" }.Order(StringComparer.Ordinal), DesktopFiles().Order(StringComparer.Ordinal));
         }
 
         [Fact]
