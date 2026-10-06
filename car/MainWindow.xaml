@@ -1,7 +1,7 @@
 <Window x:Class="car.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="車輛紀錄" Height="840" Width="1260" MinHeight="620" MinWidth="1040"
+        Title="車輛紀錄" Height="840" Width="1400" MinHeight="620" MinWidth="1200"
         WindowStartupLocation="CenterScreen"
         Icon="Assets/app.ico"
         Background="{DynamicResource AppBgBrush}"
@@ -41,7 +41,7 @@
         </Style>
         <Style x:Key="StatValue" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/>
-            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="FontSize" Value="20"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
@@ -142,9 +142,14 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="20"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
         <!-- ===== 標題列 ===== -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,18">
+        <DockPanel Grid.Row="0" Grid.ColumnSpan="3" Margin="0,0,0,18">
             <!-- 工具列：一條白色膠囊裡放幾個透明按鈕 -->
             <Border DockPanel.Dock="Right" VerticalAlignment="Center" Background="{DynamicResource CardBrush}"
                     BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="4">
@@ -195,8 +200,65 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- ===== 分頁：加油 / 保養 ===== -->
-        <Border Grid.Row="1" HorizontalAlignment="Left" Margin="0,0,0,16" Padding="4" CornerRadius="13"
+        <!-- ===== 左側：車輛清單（新增 / 編輯 / 刪除） ===== -->
+        <Border Grid.Row="1" Grid.RowSpan="2" Style="{StaticResource CardShadow}"/>
+        <Border Grid.Row="1" Grid.RowSpan="2" Style="{StaticResource Card}" Padding="12,16,12,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <DockPanel Margin="6,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="&#xE710;" Style="{StaticResource FieldIconButton}"
+                            Width="28" Height="28" FontSize="12" ToolTip="新增車輛" Click="NewVehicle_Click"/>
+                    <TextBlock Text="車輛" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <ListBox x:Name="VehicleList" Grid.Row="1" Style="{StaticResource SideListStyle}" SelectionMode="Single"
+                         SelectionChanged="VehicleList_SelectionChanged" ContextMenuOpening="VehicleList_ContextMenuOpening">
+                    <ListBox.ContextMenu>
+                        <ContextMenu/>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE804;" Style="{StaticResource Icon}" FontSize="15" Margin="0,0,10,0"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Name}"/>
+                                    <TextBlock x:Name="Sub" Text="{Binding Subtitle}" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <!-- 滑過時出現「編輯 / 刪除」按鈕 -->
+                                <StackPanel x:Name="Actions" Grid.Column="2" Orientation="Horizontal" Visibility="Collapsed" Margin="4,0,0,0">
+                                    <Button Content="&#xE70F;" Style="{StaticResource FieldIconButton}" Width="26" Height="26" FontSize="12"
+                                            ToolTip="編輯車輛" Click="EditVehicle_Click"/>
+                                    <Button Content="&#xE74D;" Style="{StaticResource IconButton}" FontSize="12"
+                                            ToolTip="刪除車輛" Click="DeleteVehicle_Click"/>
+                                </StackPanel>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                    <Setter TargetName="Actions" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Subtitle}" Value="">
+                                    <Setter TargetName="Sub" Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- ===== 分頁：加油 / 保養，右邊顯示目前的車 ===== -->
+        <DockPanel Grid.Row="1" Grid.Column="2" Margin="0,0,0,16">
+        <Border HorizontalAlignment="Left" Padding="4" CornerRadius="13"
                 Background="{DynamicResource PressedBrush}">
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="FuelTab" Style="{StaticResource TabToggle}" GroupName="Tabs" IsChecked="True" Checked="Tab_Checked">
@@ -213,13 +275,22 @@
                 </RadioButton>
             </StackPanel>
         </Border>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+            <TextBlock x:Name="VehicleTitle" FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="SemiBold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <Border x:Name="PlateBadge" CornerRadius="6" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                    BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" Background="{DynamicResource CardBrush}">
+                <TextBlock x:Name="PlateText" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+            </Border>
+        </StackPanel>
+        </DockPanel>
 
         <!-- ===== 加油 ===== -->
-        <Grid x:Name="FuelPanel" Grid.Row="2">
+        <Grid x:Name="FuelPanel" Grid.Row="2" Grid.Column="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="20"/>
-                <ColumnDefinition Width="380"/>
+                <ColumnDefinition Width="360"/>
             </Grid.ColumnDefinitions>
 
             <Grid>
@@ -397,11 +468,11 @@
         </Grid>
 
         <!-- ===== 保養 ===== -->
-        <Grid x:Name="MaintenancePanel" Grid.Row="2" Visibility="Collapsed">
+        <Grid x:Name="MaintenancePanel" Grid.Row="2" Grid.Column="2" Visibility="Collapsed">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="20"/>
-                <ColumnDefinition Width="380"/>
+                <ColumnDefinition Width="360"/>
             </Grid.ColumnDefinitions>
 
             <Grid>
@@ -588,7 +659,7 @@
         </Grid>
 
         <!-- ===== 頁尾 ===== -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="4,12,0,0">
+        <StackPanel Grid.Row="3" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="4,12,0,0">
             <Ellipse Width="7" Height="7" Fill="#10B981" VerticalAlignment="Center" Margin="0,0,8,0"/>
             <TextBlock x:Name="StatusText" FontSize="12" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
         </StackPanel>

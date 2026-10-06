@@ -29,6 +29,8 @@
     <Compile Include="..\car\Services\ExcelService.cs" Link="Source\ExcelService.cs" />
     <Compile Include="..\car\Models\FuelRecord.cs" Link="Source\FuelRecord.cs" />
     <Compile Include="..\car\Models\MaintenanceRecord.cs" Link="Source\MaintenanceRecord.cs" />
+    <Compile Include="..\car\Models\Vehicle.cs" Link="Source\Vehicle.cs" />
+    <Compile Include="..\car\Services\VehicleService.cs" Link="Source\VehicleService.cs" />
   </ItemGroup>
 
   <ItemGroup>

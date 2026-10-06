@@ -5,6 +5,9 @@ namespace car.Models
     /// <summary>一次加油：日期、當時的里程表讀數、加了幾公升、花多少錢、是否加滿。</summary>
     public class FuelRecord
     {
+        /// <summary>哪一台車（Vehicle.Id）。舊版資料沒有這個欄位，載入時會補成第一台車。</summary>
+        public string VehicleId { get; set; } = "";
+
         public DateTime Date { get; set; } = DateTime.Today;
 
         /// <summary>加油時里程表上的總公里數。</summary>

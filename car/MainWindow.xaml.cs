@@ -164,38 +164,67 @@ namespace car
 
         // ---------- 重新整理畫面 ----------
 
-        /// <summary>重算油耗與統計、重建兩個清單（保留原本的選取），並更新標題列。</summary>
+        /// <summary>目前選的車（Normalize 保證一定存在）。</summary>
+        private Vehicle CurrentVehicle => _data.Vehicles.First(v => v.Id == _data.SelectedVehicleId);
+
+        private List<FuelRecord> CurrentFuel => VehicleService.FuelOf(_data, _data.SelectedVehicleId);
+
+        private List<MaintenanceRecord> CurrentMaintenance => VehicleService.MaintenanceOf(_data, _data.SelectedVehicleId);
+
+        /// <summary>重建車輛清單，重算目前這台車的油耗與統計、重建兩個紀錄清單（保留原本的選取），並更新標題列。</summary>
         private void Refresh()
         {
             _refreshing = true;
             try
             {
-                var stats = FuelCalculator.Calculate(_data.Fuel);
-                var fuelRows = FuelCalculator.Ordered(_data.Fuel)
+                var vehicleRows = _data.Vehicles.Select(BuildVehicleRow).ToList();
+                VehicleList.ItemsSource = vehicleRows;
+                VehicleList.SelectedItem = vehicleRows.First(r => r.Vehicle.Id == _data.SelectedVehicleId);
+
+                var vehicle = CurrentVehicle;
+                var fuel = CurrentFuel;
+                var maint = CurrentMaintenance;
+
+                var stats = FuelCalculator.Calculate(fuel);
+                var fuelRows = FuelCalculator.Ordered(fuel)
                     .Select(f => BuildFuelRow(f, stats[f]))
                     .Reverse() // 最新（里程最高）的放最上面
                     .ToList();
                 FuelList.ItemsSource = fuelRows;
                 FuelList.SelectedItem = fuelRows.FirstOrDefault(r => r.Record == _selectedFuel);
 
-                var maintRows = MaintenanceCalculator.Ordered(_data.Maintenance)
+                var maintRows = MaintenanceCalculator.Ordered(maint)
                     .Select(BuildMaintenanceRow)
                     .Reverse()
                     .ToList();
                 MaintenanceList.ItemsSource = maintRows;
                 MaintenanceList.SelectedItem = maintRows.FirstOrDefault(r => r.Record == _selectedMaint);
 
-                var current = OdometerCheck.Current(_data.Fuel, _data.Maintenance);
-                UpdateFuelSummary();
-                UpdateMaintenanceSummary(current);
+                var current = OdometerCheck.Current(fuel, maint);
+                UpdateFuelSummary(fuel);
+                UpdateMaintenanceSummary(maint, current);
                 UpdateFuelInfo(stats);
 
+                VehicleTitle.Text = vehicle.Name;
+                PlateText.Text = vehicle.Plate;
+                PlateBadge.Visibility = vehicle.Plate.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
                 Title = _updater.IsInstalled ? $"{AppTitle} v{_updater.CurrentVersion}" : $"{AppTitle}（開發版）";
-                CountText.Text = current == null
-                    ? "還沒有任何紀錄"
-                    : $"目前里程 {Km(current.Value)} 公里 · 加油 {_data.Fuel.Count} 筆 · 保養 {_data.Maintenance.Count} 筆";
+                CountText.Text = (current == null
+                    ? $"{vehicle.Name}：還沒有任何紀錄"
+                    : $"{vehicle.Name} · 目前里程 {Km(current.Value)} 公里 · 加油 {fuel.Count} 筆 · 保養 {maint.Count} 筆")
+                    + (_data.Vehicles.Count > 1 ? $"（共 {_data.Vehicles.Count} 台車）" : "");
             }
             finally { _refreshing = false; }
+        }
+
+        private VehicleRow BuildVehicleRow(Vehicle v)
+        {
+            var odo = OdometerCheck.Current(VehicleService.FuelOf(_data, v.Id), VehicleService.MaintenanceOf(_data, v.Id));
+            var parts = new List<string>();
+            if (v.Plate.Length > 0) parts.Add(v.Plate);
+            if (odo != null) parts.Add($"{Km(odo.Value)} km");
+            return new VehicleRow { Vehicle = v, Subtitle = string.Join(" · ", parts) };
         }
 
         private static FuelRow BuildFuelRow(FuelRecord f, FuelStats st)
@@ -248,9 +277,9 @@ namespace car
         private static string OneLine(string text) =>
             string.Join("、", text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-        private void UpdateFuelSummary()
+        private void UpdateFuelSummary(List<FuelRecord> fuel)
         {
-            var s = FuelCalculator.Summarize(_data.Fuel);
+            var s = FuelCalculator.Summarize(fuel);
 
             AvgEconomyText.Text = s.AverageKmPerLiter is { } avg ? $"{Rate(avg)} km/L" : "—";
             AvgEconomyHint.Text = s.AverageKmPerLiter != null
@@ -269,9 +298,9 @@ namespace car
             CostPerKmHint.Text = "每開 1 公里的油錢";
         }
 
-        private void UpdateMaintenanceSummary(double? current)
+        private void UpdateMaintenanceSummary(List<MaintenanceRecord> maint, double? current)
         {
-            var s = MaintenanceCalculator.Summarize(_data.Maintenance, current);
+            var s = MaintenanceCalculator.Summarize(maint, current);
 
             MaintTotalText.Text = $"{Money(s.TotalAmount)} 元";
             MaintTotalHint.Text = $"共 {s.Count} 次保養";
@@ -306,6 +335,104 @@ namespace car
             }
         }
 
+        // ---------- 車輛：切換 / 新增 / 編輯 / 刪除 ----------
+
+        private void VehicleList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_refreshing || VehicleList.SelectedItem is not VehicleRow row || row.Vehicle.Id == _data.SelectedVehicleId) return;
+            SelectVehicle(row.Vehicle);
+        }
+
+        /// <summary>切換到另一台車：清空兩個表單（避免把 A 車的表單存到 B 車），並記住這次選的車。</summary>
+        private void SelectVehicle(Vehicle v)
+        {
+            _data.SelectedVehicleId = v.Id;
+            ClearFuelForm();
+            ClearMaintForm();
+            Persist($"已切換到「{v.Name}」");
+        }
+
+        private string? VehicleNameMessage(string name, Vehicle? editing = null) =>
+            VehicleService.Validate(name, _data.Vehicles, editing) switch
+            {
+                VehicleNameError.Empty => "請輸入車輛名稱。",
+                VehicleNameError.TooLong => $"名稱最多 {VehicleService.MaxNameLength} 個字。",
+                VehicleNameError.Duplicate => "已經有同名的車輛。",
+                _ => null,
+            };
+
+        private void NewVehicle_Click(object sender, RoutedEventArgs e)
+        {
+            var answer = VehicleDialog.Ask(this, "新增車輛", "", "", n => VehicleNameMessage(n));
+            if (answer is not { } a) return;
+            var v = new Vehicle { Name = a.Name, Plate = a.Plate };
+            _data.Vehicles.Add(v);
+            SelectVehicle(v);
+            StatusText.Text = $"已新增車輛「{v.Name}」";
+        }
+
+        private void EditVehicle(Vehicle v)
+        {
+            var answer = VehicleDialog.Ask(this, "編輯車輛", v.Name, v.Plate, n => VehicleNameMessage(n, v));
+            if (answer is not { } a) return;
+            v.Name = a.Name;
+            v.Plate = a.Plate;
+            Persist($"已更新車輛「{v.Name}」");
+        }
+
+        private void DeleteVehicle(Vehicle v)
+        {
+            if (_data.Vehicles.Count <= 1)
+            {
+                MessageBox.Show("至少要保留一台車。要換一台車，可以用「編輯」改名稱與車牌。", "刪除車輛");
+                return;
+            }
+            int fuel = VehicleService.FuelOf(_data, v.Id).Count, maint = VehicleService.MaintenanceOf(_data, v.Id).Count;
+            var message = fuel + maint == 0
+                ? $"要刪除「{v.Name}」嗎？"
+                : $"要刪除「{v.Name}」嗎？\n\n這台車的加油 {fuel} 筆、保養 {maint} 筆紀錄也會一起刪除，無法復原。\n建議先用「匯出 Excel」備份。";
+            var ok = MessageBox.Show(this, message, "刪除車輛", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (ok != MessageBoxResult.Yes) return;
+
+            bool wasCurrent = v.Id == _data.SelectedVehicleId;
+            VehicleService.Delete(_data, v);
+            if (wasCurrent)
+            {
+                ClearFuelForm();
+                ClearMaintForm();
+            }
+            Persist($"已刪除車輛「{v.Name}」");
+        }
+
+        private void EditVehicle_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: VehicleRow row }) EditVehicle(row.Vehicle);
+        }
+
+        private void DeleteVehicle_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: VehicleRow row }) DeleteVehicle(row.Vehicle);
+        }
+
+        // 車輛右鍵：編輯 / 刪除
+        private void VehicleList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            VehicleRow? row = null;
+            for (var d = e.OriginalSource as DependencyObject; d != null; d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+                if (d is ListBoxItem { DataContext: VehicleRow r }) { row = r; break; }
+            if (row == null) { e.Handled = true; return; }
+
+            var menu = VehicleList.ContextMenu;
+            menu.Items.Clear();
+            var edit = new MenuItem { Header = "編輯車輛" };
+            edit.Click += (_, _) => EditVehicle(row.Vehicle);
+            var delete = new MenuItem { Header = "刪除車輛" };
+            delete.SetResourceReference(ForegroundProperty, "DangerBrush");
+            delete.Click += (_, _) => DeleteVehicle(row.Vehicle);
+            menu.Items.Add(edit);
+            menu.Items.Add(delete);
+        }
+
         // ---------- 加油：表單 ----------
 
         private void FuelList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -324,7 +451,7 @@ namespace car
             FuelFullBox.IsChecked = f.IsFull;
             FuelNoteBox.Text = f.Note;
             FuelFormTitle.Text = "編輯加油紀錄";
-            UpdateFuelInfo(FuelCalculator.Calculate(_data.Fuel));
+            UpdateFuelInfo(FuelCalculator.Calculate(CurrentFuel));
         }
 
         private void ClearFuelForm()
@@ -399,6 +526,7 @@ namespace car
 
             return new FuelRecord
             {
+                VehicleId = _data.SelectedVehicleId,
                 Date = date,
                 Odometer = odo,
                 Liters = liters,
@@ -422,7 +550,7 @@ namespace car
         {
             if (_selectedFuel is not { } target)
             {
-                MessageBox.Show("請先在左邊選一筆要修改的加油紀錄，或按「新增」。", "提示");
+                MessageBox.Show("請先在清單裡選一筆要修改的加油紀錄，或按「新增」。", "提示");
                 return;
             }
             var f = ReadFuelForm();
@@ -528,6 +656,7 @@ namespace car
 
             return new MaintenanceRecord
             {
+                VehicleId = _data.SelectedVehicleId,
                 Date = date,
                 Odometer = odo,
                 Items = MaintItemsBox.Text.Trim(),
@@ -552,7 +681,7 @@ namespace car
         {
             if (_selectedMaint is not { } target)
             {
-                MessageBox.Show("請先在左邊選一筆要修改的保養紀錄，或按「新增」。", "提示");
+                MessageBox.Show("請先在清單裡選一筆要修改的保養紀錄，或按「新增」。", "提示");
                 return;
             }
             var m = ReadMaintForm();
@@ -595,8 +724,8 @@ namespace car
         /// </summary>
         private bool ConfirmOdometer(DateTime date, double odometer, object? except)
         {
-            var others = _data.Fuel.Where(f => f != except).Select(f => (f.Date, f.Odometer))
-                .Concat(_data.Maintenance.Where(m => m != except).Select(m => (m.Date, m.Odometer)));
+            var others = CurrentFuel.Where(f => f != except).Select(f => (f.Date, f.Odometer))
+                .Concat(CurrentMaintenance.Where(m => m != except).Select(m => (m.Date, m.Odometer)));
             if (OdometerCheck.FindConflict(date, odometer, others) is not { } c) return true;
 
             var answer = MessageBox.Show(
@@ -636,7 +765,7 @@ namespace car
             {
                 ExcelService.Export(_data, dlg.FileName);
                 StatusText.Text = "匯出完成";
-                MessageBox.Show($"匯出完成：加油 {_data.Fuel.Count} 筆、保養 {_data.Maintenance.Count} 筆。", title);
+                MessageBox.Show($"匯出完成：{_data.Vehicles.Count} 台車，加油 {_data.Fuel.Count} 筆、保養 {_data.Maintenance.Count} 筆。", title);
             }
             catch (Exception ex)
             {
@@ -670,31 +799,20 @@ namespace car
             }
 
             var skippedText = skipped > 0 ? $"\n（另有 {skipped} 列日期或里程讀不懂，會略過）" : "";
+            var vehiclesText = imported.Vehicles.Count > 0
+                ? $"\n檔案裡的車：{string.Join("、", imported.Vehicles.Select(v => v.Name))}（沒有的車會自動新增）"
+                : "";
+            bool hasUnassigned = imported.Fuel.Any(f => f.VehicleId.Length == 0) || imported.Maintenance.Any(m => m.VehicleId.Length == 0);
+            var unassignedText = hasUnassigned ? $"\n沒寫車輛的紀錄會放到目前選的「{CurrentVehicle.Name}」。" : "";
             var mode = MessageBox.Show(
-                $"讀到加油 {imported.Fuel.Count} 筆、保養 {imported.Maintenance.Count} 筆。{skippedText}\n\n" +
-                "是 = 合併到現有資料（日期與里程都相同的略過）\n否 = 清除現有資料，完全以 Excel 為準\n取消 = 不匯入",
+                $"讀到加油 {imported.Fuel.Count} 筆、保養 {imported.Maintenance.Count} 筆。{skippedText}{vehiclesText}{unassignedText}\n\n" +
+                "是 = 合併到現有資料（同一台車、日期與里程都相同的略過）\n" +
+                "否 = 清除所有車輛的資料，完全以 Excel 為準\n" +
+                "取消 = 不匯入",
                 title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (mode == MessageBoxResult.Cancel) return;
 
-            if (mode == MessageBoxResult.No)
-            {
-                _data.Fuel.Clear();
-                _data.Maintenance.Clear();
-            }
-
-            int added = 0;
-            foreach (var f in imported.Fuel)
-            {
-                if (_data.Fuel.Any(x => x.Date.Date == f.Date.Date && x.Odometer == f.Odometer)) continue;
-                _data.Fuel.Add(f);
-                added++;
-            }
-            foreach (var m in imported.Maintenance)
-            {
-                if (_data.Maintenance.Any(x => x.Date.Date == m.Date.Date && x.Odometer == m.Odometer)) continue;
-                _data.Maintenance.Add(m);
-                added++;
-            }
+            int added = VehicleService.Merge(_data, imported, _data.SelectedVehicleId, replace: mode == MessageBoxResult.No);
 
             ClearFuelForm();
             ClearMaintForm();

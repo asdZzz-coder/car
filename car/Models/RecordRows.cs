@@ -1,5 +1,15 @@
 namespace car.Models
 {
+    /// <summary>左側車輛清單的一列（畫面用）：車名 + 車牌與目前里程。</summary>
+    public class VehicleRow
+    {
+        public required Vehicle Vehicle { get; init; }
+        public string Name => Vehicle.Name;
+        public string Subtitle { get; init; } = "";
+
+        public override string ToString() => Name;
+    }
+
     /// <summary>加油清單的一列（畫面用）：原始紀錄 + 算好的文字。</summary>
     public class FuelRow
     {

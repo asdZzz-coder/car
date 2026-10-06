@@ -5,11 +5,15 @@ using car.Models;
 
 namespace car.Services
 {
-    /// <summary>存檔內容：加油紀錄 + 保養紀錄。</summary>
+    /// <summary>存檔內容：車輛清單 + 所有車的加油紀錄與保養紀錄 + 上次選的車。</summary>
     public class CarData
     {
+        public List<Vehicle> Vehicles { get; set; } = new();
         public List<FuelRecord> Fuel { get; set; } = new();
         public List<MaintenanceRecord> Maintenance { get; set; } = new();
+
+        /// <summary>上次關閉程式時選的車，下次開啟時直接顯示這台。</summary>
+        public string SelectedVehicleId { get; set; } = "";
     }
 
     /// <summary>
@@ -39,20 +43,24 @@ namespace car.Services
 
         internal static CarData Load(string path)
         {
-            if (!File.Exists(path)) return new();
-            try
+            CarData data;
+            if (!File.Exists(path)) data = new();
+            else
             {
-                var data = JsonSerializer.Deserialize<CarData>(File.ReadAllText(path), Options) ?? new();
-                data.Fuel ??= new();
-                data.Maintenance ??= new();
-                return data;
+                try
+                {
+                    data = JsonSerializer.Deserialize<CarData>(File.ReadAllText(path), Options) ?? new();
+                }
+                catch (JsonException)
+                {
+                    // 檔案損毀（例如被手動改壞）：備份後以空資料開始，不覆蓋原檔
+                    File.Move(path, path + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss"));
+                    data = new();
+                }
             }
-            catch (JsonException)
-            {
-                // 檔案損毀（例如被手動改壞）：備份後以空資料開始，不覆蓋原檔
-                File.Move(path, path + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss"));
-                return new();
-            }
+            // 舊版（只有一台車）的資料：建立一台車，把所有紀錄歸給它
+            VehicleService.Normalize(data);
+            return data;
         }
 
         internal static void Save(string path, CarData data)

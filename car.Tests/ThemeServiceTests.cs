@@ -88,6 +88,7 @@ namespace car.Tests
         [Theory]
         [InlineData("App.xaml")]
         [InlineData("MainWindow.xaml")]
+        [InlineData("VehicleDialog.xaml")]
         public void Xaml_UsesOnlyDynamicPaletteBrushes(string file)
         {
             var xaml = ReadXaml(file);

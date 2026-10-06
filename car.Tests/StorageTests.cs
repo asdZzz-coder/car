@@ -17,7 +17,15 @@ namespace car.Tests
             if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
         }
 
-        private static CarData Sample() => new()
+        /// <summary>一台車的範例資料（Normalize 後所有紀錄都屬於「我的車」）。</summary>
+        private static CarData Sample()
+        {
+            var data = SampleRecords();
+            VehicleService.Normalize(data);
+            return data;
+        }
+
+        private static CarData SampleRecords() => new()
         {
             Fuel =
             {
@@ -92,6 +100,47 @@ namespace car.Tests
             Assert.Empty(data.Maintenance);
         }
 
+        [Fact]
+        public void DataStore_OldSingleCarFile_IsMigratedToOneVehicle()
+        {
+            // v1.0.1 的存檔：沒有 Vehicles，紀錄也沒有 VehicleId
+            var path = Path.Combine(_root, "car.json");
+            File.WriteAllText(path, """
+                {
+                  "Fuel": [ { "Date": "2026-01-01T00:00:00", "Odometer": 100, "Liters": 10, "Amount": 300, "IsFull": true, "Note": "" } ],
+                  "Maintenance": [ { "Date": "2026-01-02T00:00:00", "Odometer": 150, "Items": "機油", "Amount": 1500, "Shop": "", "NextOdometer": 5150, "Note": "" } ]
+                }
+                """);
+
+            var data = DataStore.Load(path);
+
+            var car = Assert.Single(data.Vehicles);
+            Assert.Equal(VehicleService.DefaultName, car.Name);
+            Assert.Equal(car.Id, data.SelectedVehicleId);
+            Assert.Equal(car.Id, data.Fuel.Single().VehicleId);
+            Assert.Equal(car.Id, data.Maintenance.Single().VehicleId);
+        }
+
+        [Fact]
+        public void DataStore_RoundTripsVehicles()
+        {
+            var path = Path.Combine(_root, "car.json");
+            var data = Sample();
+            var second = new Vehicle { Name = "機車", Plate = "ABC-123" };
+            data.Vehicles.Add(second);
+            data.Fuel.Add(new FuelRecord { VehicleId = second.Id, Odometer = 500, Liters = 4, Amount = 120 });
+            data.SelectedVehicleId = second.Id;
+
+            DataStore.Save(path, data);
+            var loaded = DataStore.Load(path);
+
+            Assert.Equal(2, loaded.Vehicles.Count);
+            Assert.Equal("ABC-123", loaded.Vehicles[1].Plate);
+            Assert.Equal(second.Id, loaded.SelectedVehicleId);
+            Assert.Single(VehicleService.FuelOf(loaded, second.Id));
+            Assert.Equal(3, VehicleService.FuelOf(loaded, loaded.Vehicles[0].Id).Count);
+        }
+
         // ---------- Excel ----------
 
         [Fact]
@@ -132,9 +181,11 @@ namespace car.Tests
             using var wb = new XLWorkbook(path);
             var ws = wb.Worksheet(ExcelService.FuelSheet);
             // 第一筆：12000 加滿 → 沒加滿 20 L → 12950.5 加滿 22.3 L：950.5 km / 42.3 L
-            Assert.Equal(480, ws.Cell(2, 7).GetDouble());                           // 到下次加油開了
-            Assert.Equal(Math.Round(950.5 / 42.3, 2), ws.Cell(2, 8).GetDouble());  // 油耗
-            Assert.Equal("否", ws.Cell(3, 6).GetString());
+            int C(string h) => ExcelService.Col(ExcelService.FuelHeaders, h);
+            Assert.Equal("我的車", ws.Cell(2, C("車輛")).GetString());
+            Assert.Equal(480, ws.Cell(2, C("到下次加油開了 (km)")).GetDouble());
+            Assert.Equal(Math.Round(950.5 / 42.3, 2), ws.Cell(2, C("油耗 (km/公升)")).GetDouble());
+            Assert.Equal("否", ws.Cell(3, C("加滿")).GetString());
         }
 
         [Fact]
@@ -171,6 +222,49 @@ namespace car.Tests
             Assert.Equal(1200m, f.Amount);
             Assert.False(f.IsFull);
             Assert.Empty(data.Maintenance);
+        }
+
+        [Fact]
+        public void Excel_RoundTripsSeveralVehicles()
+        {
+            var path = Path.Combine(_root, "two.xlsx");
+            var data = Sample();
+            var bike = new Vehicle { Name = "機車", Plate = "ABC-123" };
+            data.Vehicles.Add(bike);
+            data.Fuel.Add(new FuelRecord { VehicleId = bike.Id, Date = new DateTime(2026, 9, 2), Odometer = 8000, Liters = 4.2, Amount = 130m });
+            data.Maintenance.Add(new MaintenanceRecord { VehicleId = bike.Id, Date = new DateTime(2026, 9, 3), Odometer = 8010, Items = "換機油", Amount = 300m });
+
+            ExcelService.Export(data, path);
+            var (back, _) = ExcelService.Import(path);
+
+            Assert.Equal(new[] { "我的車", "機車" }, back.Vehicles.Select(v => v.Name));
+            Assert.Equal("ABC-123", back.Vehicles[1].Plate);
+            var bikeId = back.Vehicles[1].Id;
+            Assert.Equal(8000, back.Fuel.Single(f => f.VehicleId == bikeId).Odometer);
+            Assert.Equal("換機油", back.Maintenance.Single(m => m.VehicleId == bikeId).Items);
+            Assert.Equal(3, back.Fuel.Count(f => f.VehicleId == back.Vehicles[0].Id));
+        }
+
+        [Fact]
+        public void Excel_ImportWithoutVehicleColumn_LeavesVehicleEmpty()
+        {
+            var path = Path.Combine(_root, "old.xlsx");
+            using (var wb = new XLWorkbook())
+            {
+                var ws = wb.Worksheets.Add(ExcelService.MaintenanceSheet);
+                ws.Cell(1, 1).Value = "日期";
+                ws.Cell(1, 2).Value = "里程 (km)";
+                ws.Cell(1, 3).Value = "保養項目";
+                ws.Cell(2, 1).SetValue("2026/10/1");
+                ws.Cell(2, 2).SetValue(12000);
+                ws.Cell(2, 3).SetValue("機油");
+                wb.SaveAs(path);
+            }
+
+            var (data, _) = ExcelService.Import(path);
+
+            Assert.Empty(data.Vehicles);
+            Assert.Equal("", data.Maintenance.Single().VehicleId);
         }
 
         [Theory]

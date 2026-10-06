@@ -348,6 +348,42 @@
             </Setter>
         </Style>
 
+        <!-- ===== 車輛清單（左側）：比紀錄清單緊湊，選取時同樣有強調色細條 ===== -->
+        <Style x:Key="SideListStyle" TargetType="ListBox" BasedOn="{StaticResource EntryListStyle}">
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Margin" Value="0,0,0,2"/>
+                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Grid>
+                                        <Border x:Name="Bd" CornerRadius="10" Padding="10,8,6,8" MinHeight="44" Background="Transparent">
+                                            <ContentPresenter VerticalAlignment="Center"/>
+                                        </Border>
+                                        <Border x:Name="Bar" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left"
+                                                Background="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                                            <Setter TargetName="Bar" Property="Visibility" Value="Visible"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ===== 分頁切換（加油紀錄 / 保養紀錄）：膠囊裡的兩個選項，選到的變白底 ===== -->
         <Style x:Key="TabToggle" TargetType="RadioButton">
             <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
