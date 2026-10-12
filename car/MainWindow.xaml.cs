@@ -128,7 +128,7 @@ namespace car
         private async Task CheckForUpdateAsync(bool manual)
         {
             const string title = "檢查更新";
-            if (!_updater.IsInstalled)
+            if (!_updater.IsRelease)
             {
                 if (manual)
                     MessageBox.Show("目前是開發版（非安裝版），無法線上更新。", title);
@@ -141,6 +141,15 @@ namespace car
                 if (info == null)
                 {
                     if (manual) MessageBox.Show($"目前已是最新版本（{_updater.CurrentVersion}）。", title);
+                    return;
+                }
+
+                // 從 APP 啟動器開的：新版由啟動器下載，這裡只提醒（啟動時的自動檢查不打擾，啟動器自己會標示可更新）
+                if (!_updater.IsInstalled)
+                {
+                    if (manual)
+                        MessageBox.Show($"發現新版本 {info.Version}（目前 {_updater.CurrentVersion}）。\n\n請到「APP 啟動器」按「更新到 v{info.Version}」，更新後從啟動器開啟新版。",
+                            "有新版本", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
@@ -209,7 +218,7 @@ namespace car
                 PlateText.Text = vehicle.Plate;
                 PlateBadge.Visibility = vehicle.Plate.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-                Title = _updater.IsInstalled ? $"{AppTitle} v{_updater.CurrentVersion}" : $"{AppTitle}（開發版）";
+                Title = _updater.IsRelease ? $"{AppTitle} v{_updater.CurrentVersion}" : $"{AppTitle}（開發版）";
                 CountText.Text = (current == null
                     ? $"{vehicle.Name}：還沒有任何紀錄"
                     : $"{vehicle.Name} · 目前里程 {Km(current.Value)} 公里 · 加油 {fuel.Count} 筆 · 保養 {maint.Count} 筆")
